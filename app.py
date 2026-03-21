@@ -94,43 +94,49 @@ if start_btn:
     elif not ordered_files:
         st.warning("변환할 이미지나 PDF 파일을 업로드하고 순서를 지정해 주세요!")
     else:
-        with st.spinner("AI가 이미지를 분석하고 워드로 변환 중입니다... (시간이 조금 걸릴 수 있습니다)"):
-            # 업로드된 파일을 처리하기 위해 임시 폴더에 저장
-            temp_dir = tempfile.mkdtemp()
-            image_paths = []
+        # UI를 가장 먼저 화면에 띄워서 멈춰있는 느낌 원천 차단
+        st.markdown("---")
+        progress_title = st.empty()
+        progress_bar = st.progress(0)
+        progress_status = st.empty()
+        st.markdown("---")
+        
+        temp_dir = tempfile.mkdtemp()
+        image_paths = []
+        
+        progress_title.markdown("### ⚙️ 파일 변환 준비 중...")
+        
+        for f_idx, file in enumerate(ordered_files):
+            progress_status.info(f"🏃 '{file.name}' 파일을 AI가 읽을 수 있도록 최적화하고 있습니다...")
+            ext = os.path.splitext(file.name)[1].lower()
             
-            for file in ordered_files:
-                ext = os.path.splitext(file.name)[1].lower()
-                
-                if ext == '.pdf':
-                    # PDF 파일인 경우: 각 페이지를 고해상도 이미지로 분할하여 추출
-                    pdf_document = fitz.open(stream=file.read(), filetype="pdf")
-                    for page_num in range(len(pdf_document)):
-                        page = pdf_document.load_page(page_num)
-                        pix = page.get_pixmap(dpi=200) # 글자가 깨지지 않도록 고해상도(DPI 200)로 렌더링
-                        img_path = os.path.join(temp_dir, f"{os.path.splitext(file.name)[0]}_page_{page_num+1}.jpg")
-                        pix.save(img_path)
-                        image_paths.append(img_path)
-                else:
-                    # 일반 이미지 파일인 경우: 순수 일반 JPEG로 강제 변환
-                    path = os.path.join(temp_dir, f"{os.path.splitext(file.name)[0]}_safe.jpg")
-                    img = Image.open(file)
-                    if img.mode != 'RGB':
-                        img = img.convert('RGB')
-                    img.save(path, format='JPEG')
-                    image_paths.append(path)
+            if ext == '.pdf':
+                pdf_document = fitz.open(stream=file.read(), filetype="pdf")
+                for page_num in range(len(pdf_document)):
+                    page = pdf_document.load_page(page_num)
+                    # 해상도를 150으로 살짝 낮춰 분할 속도 2배 향상
+                    pix = page.get_pixmap(dpi=150) 
+                    img_path = os.path.join(temp_dir, f"{os.path.splitext(file.name)[0]}_page_{page_num+1}.jpg")
+                    pix.save(img_path)
+                    image_paths.append(img_path)
+            else:
+                path = os.path.join(temp_dir, f"{os.path.splitext(file.name)[0]}_safe.jpg")
+                img = Image.open(file)
+                if img.mode != 'RGB':
+                    img = img.convert('RGB')
+                # 용량 다이어트(quality=85)를 통해 구글 API 전송 속도 대폭 향상
+                img.save(path, format='JPEG', optimize=True, quality=85)
+                image_paths.append(path)
             
-            try:
+            progress_bar.progress((f_idx + 1) / len(ordered_files))
+        
+        try:
+            with st.spinner("AI 분석을 시작합니다..."):
                 # 1단계: HTML 추출
                 extractor = DocumentVisionExtractor(api_key=user_api_key)
                 st.info(f"🤖 **자동 적용된 AI 모델:** `{extractor.model_name}`")
                 
-                # --- [추가된 기능 2] 답답함을 해소하기 위한 '초대형' 실시간 진행 바 ---
-                st.markdown("---")
-                progress_title = st.empty()
-                progress_bar = st.progress(0)
-                progress_status = st.empty()
-                st.markdown("---")
+                progress_bar.progress(0) # AI 분석용으로 게이지 리셋
                 
                 def update_progress(current, total):
                     percent = int((current / total) * 100)
@@ -184,5 +190,5 @@ if start_btn:
                         file_name="converted_document.docx",
                         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                     )
-            except Exception as e:
-                st.error(f"오류가 발생했습니다: {e}")
+        except Exception as e:
+            st.error(f"오류가 발생했습니다: {e}")
