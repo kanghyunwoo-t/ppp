@@ -16,12 +16,12 @@ class DocumentVisionExtractor:
             if 'generateContent' in m.supported_generation_methods
         ]
         
-        # 2. 압도적인 속도를 위해 초고속(Flash) 모델을 최우선으로 지정
+        # 2. 유료 사용자를 위한 최고 성능(Pro) 모델을 다시 최우선으로 지정
         preferences = [
-            "gemini-1.5-flash",
-            "gemini-1.5-flash-latest",
             "gemini-1.5-pro",
             "gemini-1.5-pro-latest",
+            "gemini-1.5-flash",
+            "gemini-1.5-flash-latest",
             "gemini-pro-vision",
             "gemini-1.0-pro-vision-latest"
         ]
@@ -97,7 +97,6 @@ class DocumentVisionExtractor:
             """단일 이미지를 처리하는 독립된 작업 함수"""
             for attempt in range(3): # 최대 3번 끈질기게 재시도 (안정성 강화)
                 try:
-                    time.sleep(0.1) # 딜레이를 0.1초로 대폭 축소하여 체감 속도 향상
                     chunk = self.extract_html_from_image(path)
                     return idx, chunk, None
                 except Exception as e:
@@ -109,8 +108,8 @@ class DocumentVisionExtractor:
                     return idx, None, err_msg
             return idx, None, "API 호출 제한(429) 에러가 계속 발생했습니다."
                 
-        # [핵심] Flash 모델의 빠른 속도를 활용하기 위해 동시에 5장씩 병렬 처리
-        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        # [핵심] 유료 API의 압도적인 트래픽 허용량을 활용하여 일꾼 10명이 동시 처리 (리미트 해제)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
             futures = [executor.submit(_process_single, i, p) for i, p in enumerate(image_paths)]
             
             # 완료되는 작업부터 화면(프로그래스 바)에 즉시 반영
