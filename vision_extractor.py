@@ -16,12 +16,12 @@ class DocumentVisionExtractor:
             if 'generateContent' in m.supported_generation_methods
         ]
         
-        # 2. 성능이 좋은 순서대로 우선순위 지정
+        # 2. 압도적인 속도를 위해 초고속(Flash) 모델을 최우선으로 지정
         preferences = [
-            "gemini-1.5-pro",
-            "gemini-1.5-pro-latest",
             "gemini-1.5-flash",
             "gemini-1.5-flash-latest",
+            "gemini-1.5-pro",
+            "gemini-1.5-pro-latest",
             "gemini-pro-vision",
             "gemini-1.0-pro-vision-latest"
         ]
@@ -102,8 +102,8 @@ class DocumentVisionExtractor:
             except Exception as e:
                 return idx, None, str(e)
                 
-        # [핵심] 동시에 최대 3장씩 병렬(비동기) 처리하여 속도 대폭 향상
-        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+        # [핵심] Flash 모델의 빠른 속도를 활용하기 위해 동시에 5장씩 병렬 처리
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
             futures = [executor.submit(_process_single, i, p) for i, p in enumerate(image_paths)]
             
             # 완료되는 작업부터 화면(프로그래스 바)에 즉시 반영
