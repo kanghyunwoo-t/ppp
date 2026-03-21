@@ -4,6 +4,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 import fitz  # PyMuPDF (PDF 처리용)
 from PIL import Image
+from streamlit_sortables import sort_items
 from vision_extractor import DocumentVisionExtractor
 from html_to_word import HtmlToDocxConverter
 
@@ -47,16 +48,16 @@ ordered_files = []
 if uploaded_files:
     st.markdown("### 🔄 작업 순서 확인 및 변경")
     if len(uploaded_files) > 1:
-        st.caption("💡 **순서가 맞지 않나요?** 아래 상자에서 파일명 옆의 `X`를 눌러 지운 뒤, 원하는 순서대로 다시 클릭해서 추가해 보세요!")
+        st.caption("💡 **순서가 맞지 않나요?** 아래 목록에서 마우스로 직접 항목을 **드래그(위아래로 끌기)**하여 순서를 변경해 보세요!")
         
         # 동일한 파일명이 있을 수 있으므로 번호를 붙여 고유하게 만듦
         file_dict = {f"{i+1}. {f.name}": f for i, f in enumerate(uploaded_files)}
         
-        selected_order = st.multiselect(
-            "작업할 순서대로 배치하세요:", 
-            options=list(file_dict.keys()), 
-            default=list(file_dict.keys())
-        )
+        # 드래그 앤 드롭 방식의 정렬 UI 제공
+        selected_order = sort_items(list(file_dict.keys()))
+        if not selected_order: # 로딩 중일 때의 안전장치
+            selected_order = list(file_dict.keys())
+            
         ordered_files = [file_dict[k] for k in selected_order]
     else:
         ordered_files = uploaded_files
