@@ -161,12 +161,21 @@ if start_btn:
                 is_pro = "pro" in extractor.model_name.lower()
                 in_price = 3.50 if is_pro else 0.35
                 out_price = 10.50 if is_pro else 1.05
+                # 최신 구글 API 유료 요금표 완벽 반영 (100만 토큰 당 달러 가격)
+                in_price = 3.50 if is_pro else 0.075
+                out_price = 10.50 if is_pro else 0.30
                 
                 est_cost_usd = (in_tokens / 1_000_000) * in_price + (out_tokens / 1_000_000) * out_price
                 est_cost_krw = est_cost_usd * 1350 # 환율 대략 1350원 기준
                 
                 st.info(f"💰 **이번 변환 예상 API 비용:** 약 ${est_cost_usd:.4f} (한화 약 {int(est_cost_krw)}원)\n\n"
                         f"📊 **소모된 토큰:** 이미지 분석(입력) {in_tokens:,}개 / 결과 생성(출력) {out_tokens:,}개")
+                st.markdown("### 💰 실시간 요금 계산기")
+                c1, c2, c3 = st.columns(3)
+                c1.metric(label="총 소모 토큰", value=f"{in_tokens + out_tokens:,} 개")
+                c2.metric(label="예상 비용 (달러)", value=f"${est_cost_usd:.4f}")
+                c3.metric(label="예상 비용 (원화)", value=f"약 {int(est_cost_krw)} 원")
+                st.caption(f"적용 모델: `{extractor.model_name}` (입력: {in_tokens:,} / 출력: {out_tokens:,})")
                 
                 # 확실하게 보이도록 미리보기 상자 밖으로 빼기 (expander 제거)
                 st.markdown("### 👀 추출된 내용 미리보기")
