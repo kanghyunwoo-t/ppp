@@ -4,3 +4,4 @@ python-docx
 Pillow
 streamlit
 PyMuPDF
+streamlit-sortables
