@@ -1,6 +1,8 @@
 import time
 import google.generativeai as genai
 from PIL import Image
+import concurrent.futures
+import threading
 
 class DocumentVisionExtractor:
     def __init__(self, api_key: str):
@@ -43,6 +45,7 @@ class DocumentVisionExtractor:
         self.model = genai.GenerativeModel(self.model_name)
         self.total_input_tokens = 0
         self.total_output_tokens = 0
+        self._lock = threading.Lock() # 다중 스레드에서 토큰을 안전하게 더하기 위한 자물쇠
         
     def extract_html_from_image(self, image_path: str) -> str:
         """단일 이미지에서 HTML 구조를 추출합니다."""
@@ -50,18 +53,25 @@ class DocumentVisionExtractor:
         img = Image.open(image_path)
         
         prompt = """
-        당신은 문서 구조화 전문가입니다. 첨부된 문서 이미지를 분석하여 완벽한 시맨틱 HTML로 변환하세요.
-        - 제목(<h1>~<h3>), 본문(<p>), 리스트(<ul>, <li>)를 정확히 사용하세요.
-        - 표(Table)가 있다면 <table>, <tr>, <th>, <td> 태그를 사용하고, 병합된 셀이 있다면 반드시 colspan과 rowspan 속성을 정확히 계산하여 포함하세요.
-        - 수학 수식이나 특수 기호는 있는 그대로 텍스트로 보존하세요.
-        - CSS 스타일이나 <html>, <body> 태그는 제외하고 내부 HTML 코드만 순수하게 출력하세요. Markdown 래퍼(```html 등) 없이 출력하세요.
+        당신은 문서 구조화 및 표(Table) 복원 전문가입니다. 첨부된 문서 이미지를 분석하여 완벽한 시맨틱 HTML로 변환하세요.
+        특히, 표를 분석할 때 다음 규칙을 뼈대로 삼아 엄격하게 지키세요:
+        1. [그리드 계산] 표의 전체 행(Row)과 열(Column)의 개수를 시각적으로 먼저 완벽히 파악하세요.
+        2. [병합 검증] 병합된 셀(colspan, rowspan)이 있다면, 각 줄(<tr>)의 총 칸 수가 전체 열의 개수와 논리적으로 완벽히 일치하도록 꼼꼼하게 검증하며 태그를 작성하세요.
+        3. 투명한 테두리나 배경색으로만 구분된 암묵적인 표도 놓치지 마세요.
+        4. 복잡하게 얽힌 표라도 '중첩 표(표 안의 표)'를 만들지 말고, 단일 표 내에서의 colspan/rowspan만으로 깔끔하게 구현하세요.
+        
+        일반 텍스트 구조화 규칙:
+        - 제목(<h1>~<h4>), 본문(<p>), 리스트(<ul>, <li>)를 상황에 맞게 정확히 사용하세요.
+        - 수식 및 특수 기호는 누락 없이 있는 그대로 보존하세요.
+        - <html>, <body> 등의 컨테이너나 CSS를 절대 포함하지 말고 순수 HTML 태그만 출력하세요. Markdown 표기(```html)도 절대 쓰지 마세요.
         """
         
         response = self.model.generate_content([prompt, img])
         try:
             if response.usage_metadata:
-                self.total_input_tokens += response.usage_metadata.prompt_token_count
-                self.total_output_tokens += response.usage_metadata.candidates_token_count
+                with self._lock: # 여러 스레드가 동시에 토큰을 더할 때 충돌하지 않도록 보호
+                    self.total_input_tokens += response.usage_metadata.prompt_token_count
+                    self.total_output_tokens += response.usage_metadata.candidates_token_count
         except Exception:
             pass
         text = response.text.strip()
@@ -80,24 +90,40 @@ class DocumentVisionExtractor:
         """여러 장의 이미지를 순차 처리하여 API 제한을 방지하고 하나의 HTML로 통합합니다."""
         combined_html = ""
         total = len(image_paths)
+        results = [None] * total
+        completed = 0
         
-        for idx, path in enumerate(image_paths):
-            if progress_callback:
-                progress_callback(idx + 1, total)
+        def _process_single(idx, path):
+            """단일 이미지를 처리하는 독립된 작업 함수"""
             try:
-                html_chunk = self.extract_html_from_image(path)
-                
-                # 첫 페이지가 아니면 페이지 나누기(Page Break)용 태그 추가
-                if idx > 0:
-                    combined_html += "\n<hr class=\"page-break\">\n"
-                    
-                combined_html += f"\n<!-- Page {idx + 1} -->\n" + html_chunk
-                
-                # 마지막 이미지가 아니면 API 호출 제한 방지를 위해 대기
-                if idx < total - 1:
-                    print(f"API Rate Limit 방지를 위해 {delay_seconds}초 대기합니다...")
-                    time.sleep(delay_seconds)
+                time.sleep(0.5) # 동시 접속 튕김을 막기 위한 아주 짧은 텀
+                chunk = self.extract_html_from_image(path)
+                return idx, chunk, None
             except Exception as e:
-                raise Exception(f"AI가 이미지를 분석하는 중 오류가 발생했습니다 ({path}). 상세 에러: {e}")
+                return idx, None, str(e)
+                
+        # [핵심] 동시에 최대 3장씩 병렬(비동기) 처리하여 속도 대폭 향상
+        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+            futures = [executor.submit(_process_single, i, p) for i, p in enumerate(image_paths)]
+            
+            # 완료되는 작업부터 화면(프로그래스 바)에 즉시 반영
+            for future in concurrent.futures.as_completed(futures):
+                idx, chunk, err = future.result()
+                completed += 1
+                
+                if progress_callback:
+                    progress_callback(completed, total)
+                    
+                if err:
+                    raise Exception(f"AI 분석 중 오류 발생 ({image_paths[idx]}): {err}")
+                    
+                # 완료된 순서가 뒤죽박죽이어도 배열에 정확한 자기 번호(idx) 자리에 저장
+                results[idx] = chunk
+                
+        # 모든 병렬 작업이 끝난 후 1페이지부터 순서대로 HTML 조합
+        for idx, chunk in enumerate(results):
+            if idx > 0:
+                combined_html += "\n<hr class=\"page-break\">\n"
+            combined_html += f"\n<!-- Page {idx + 1} -->\n" + chunk
                 
         return combined_html
