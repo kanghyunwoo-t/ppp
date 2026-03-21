@@ -95,12 +95,19 @@ class DocumentVisionExtractor:
         
         def _process_single(idx, path):
             """단일 이미지를 처리하는 독립된 작업 함수"""
-            try:
-                time.sleep(0.5) # 동시 접속 튕김을 막기 위한 아주 짧은 텀
-                chunk = self.extract_html_from_image(path)
-                return idx, chunk, None
-            except Exception as e:
-                return idx, None, str(e)
+            for attempt in range(3): # 최대 3번 끈질기게 재시도 (안정성 강화)
+                try:
+                    time.sleep(0.1) # 딜레이를 0.1초로 대폭 축소하여 체감 속도 향상
+                    chunk = self.extract_html_from_image(path)
+                    return idx, chunk, None
+                except Exception as e:
+                    err_msg = str(e)
+                    # 속도가 너무 빨라 429(Too Many Requests)가 뜨면 잠시 대기 후 재시도
+                    if "429" in err_msg or "Quota" in err_msg or "exhausted" in err_msg.lower():
+                        time.sleep(2 * (attempt + 1)) 
+                        continue
+                    return idx, None, err_msg
+            return idx, None, "API 호출 제한(429) 에러가 계속 발생했습니다."
                 
         # [핵심] Flash 모델의 빠른 속도를 활용하기 위해 동시에 5장씩 병렬 처리
         with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
