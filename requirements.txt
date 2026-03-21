@@ -3,3 +3,4 @@ beautifulsoup4
 python-docx
 Pillow
 streamlit
+PyMuPDF
