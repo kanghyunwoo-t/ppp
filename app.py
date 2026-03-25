@@ -11,8 +11,8 @@ from html_to_word import HtmlToDocxConverter
 # 페이지 기본 설정
 st.set_page_config(page_title="문서 변환기", layout="centered")
 
-st.title("📄 문서 구조 보존형 디지털 변환기 (✨업데이트됨)")
-st.write("이미지 및 **PDF 파일**을 아래에 **드래그 앤 드롭**하거나 클릭해서 업로드하세요.")
+st.title("📄 문서 변환기 : 이미지, pdf -> 워드")
+st.markdown("##### (프린트물을 워드로 변환할 때 유용합니다)")
 
 # 넓고 큼직한 파일 업로드 칸을 만들기 위한 커스텀 CSS 적용
 st.markdown("""
@@ -77,9 +77,6 @@ if uploaded_files:
 # 업데이트 기능 안내 (사용자 혼란 방지용)
 st.info("💡 **안내:** 이미지를 올리고 **[🚀 변환 시작하기]**를 누르시면, 작업 완료 후 하단에 **'미리보기'**가 나타납니다!")
 
-# 지인 공유용 보안: API 키 대신 웹사이트 접속 비밀번호 입력받기
-app_password = st.text_input("🔒 웹사이트 접속 비밀번호", type="password", help="관리자에게 공유받은 비밀번호를 입력해야 사용할 수 있습니다.")
-
 col1, col2 = st.columns(2)
 with col1:
     start_btn = st.button("🚀 변환 시작하기", use_container_width=True)
@@ -89,10 +86,7 @@ with col2:
         st.rerun()
 
 if start_btn:
-    # Streamlit 서버 금고에 저장된 비밀번호와 일치하는지 확인
-    if app_password != st.secrets.get("APP_PASSWORD", "1234"):
-        st.warning("비밀번호가 틀렸습니다! 올바른 비밀번호를 입력해 주세요.")
-    elif not ordered_files:
+    if not ordered_files:
         st.warning("변환할 이미지나 PDF 파일을 업로드하고 순서를 지정해 주세요!")
     else:
         # UI를 가장 먼저 화면에 띄워서 멈춰있는 느낌 원천 차단
