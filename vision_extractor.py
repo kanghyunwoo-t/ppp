@@ -45,6 +45,7 @@ class DocumentVisionExtractor:
         self.model = genai.GenerativeModel(self.model_name)
         self.total_input_tokens = 0
         self.total_output_tokens = 0
+        self.blocked_pages = [] # [신규] 차단된 페이지 추적용 리스트
         self._lock = threading.Lock() # 다중 스레드에서 토큰을 안전하게 더하기 위한 자물쇠
         
     def extract_html_from_image(self, image_path: str) -> str:
@@ -80,9 +81,26 @@ class DocumentVisionExtractor:
         except ValueError as e:
             # 구글 AI의 저작권(Recitation) 또는 안전(Safety) 정책에 걸려 텍스트를 주지 않는 경우 예외 처리
             error_msg = str(e)
+            
+            # 출처(Citation/URI) 정보 추출 시도
+            citation_info = ""
+            try:
+                if response.candidates and response.candidates[0].citation_metadata:
+                    sources = [source.uri for source in response.candidates[0].citation_metadata.citation_sources if getattr(source, 'uri', None)]
+                    if sources:
+                        # 중복된 링크 제거 후 클릭 가능한 HTML 태그로 변환
+                        unique_sources = list(set(sources))
+                        citation_info = "<p><b>[원본 출처 링크]:</b></p><ul>" + "".join([f"<li><a href='{uri}'>{uri}</a></li>" for uri in unique_sources]) + "</ul>"
+            except Exception:
+                pass # 출처 정보가 아예 없는 경우 무시
+                
             if "finish_reason is 4" in error_msg or "copyrighted" in error_msg:
-                return "<p style='color:red;'><b>[주의: 이 페이지는 구글 AI의 저작권 보호 정책(Recitation)에 의해 내용 추출이 차단되었습니다. 원본 문서의 내용이 기존 저작물과 동일할 때 발생합니다.]</b></p>"
+                with self._lock: # 여러 스레드가 동시에 접근해도 안전하도록 보호
+                    self.blocked_pages.append((image_path, "저작권 보호(Recitation) 차단"))
+                return f"<p style='color:red;'><b>[주의: 이 페이지는 구글 AI의 저작권 보호 정책(Recitation)에 의해 내용 추출이 차단되었습니다. 원본 문서가 기존 저작물과 동일할 때 발생합니다.]</b></p>{citation_info}"
             else:
+                with self._lock:
+                    self.blocked_pages.append((image_path, "보안 정책 필터 차단"))
                 return f"<p style='color:red;'><b>[주의: 이 페이지는 구글 AI 보안 정책 필터에 의해 차단되었습니다. 사유: {error_msg}]</b></p>"
         
         # AI가 마크다운(```html 등)으로 감싸서 출력한 경우 불필요한 텍스트 강제 제거
