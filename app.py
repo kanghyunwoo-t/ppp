@@ -4,6 +4,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 import fitz  # PyMuPDF (PDF 처리용)
 from PIL import Image
+from PIL.Image import DecompressionBombError
 
 # 아주 거대한 고화질 스캔본이나 사진을 열 때 발생하는 '이미지 폭탄(DecompressionBomb)' 에러 방지
 Image.MAX_IMAGE_PIXELS = None
@@ -105,6 +106,8 @@ if start_btn:
         
         progress_title.markdown("### ⚙️ 파일 변환 준비 중...")
         
+        failed_files = [] # 처리 실패한 파일 기록용 빈 리스트 (바구니) 생성
+        
         for f_idx, file in enumerate(ordered_files):
             progress_status.info(f"🏃 '{file.name}' 파일을 AI가 읽을 수 있도록 최적화하고 있습니다...")
             ext = os.path.splitext(file.name)[1].lower()
@@ -154,11 +157,12 @@ if start_btn:
                 
                 st.success("🎉 변환이 완료되었습니다! 아래 버튼을 눌러 다운로드하세요.")
                 
-                # [신규] 저작권/보안 차단된 페이지가 있다면 사용자에게 명시적으로 알림
-                if extractor.blocked_pages:
-                    blocked_msg = "**🚨 주의: 일부 페이지가 저작권 및 보안 정책에 의해 차단되었습니다!**\n\n"
+                # [수정] 저작권/보안 차단 또는 초고해상도 제한으로 실패한 파일 통합 안내
+                all_blocked = failed_files + (extractor.blocked_pages if hasattr(extractor, 'blocked_pages') else [])
+                if all_blocked:
+                    blocked_msg = "**🚨 주의: 일부 파일이 다음의 사유로 변환에서 제외되었습니다!**\n\n"
                     blocked_msg += "아래의 파일들은 내용이 추출되지 않았습니다:\n"
-                    for path, reason in extractor.blocked_pages:
+                    for path, reason in all_blocked:
                         # 사용자 친화적인 파일명으로 다듬기 (예: file_page_1.jpg -> file_page_1)
                         clean_name = os.path.basename(path).replace('_safe.jpg', '').replace('.jpg', '')
                         blocked_msg += f"- 📄 **{clean_name}** ({reason})\n"
