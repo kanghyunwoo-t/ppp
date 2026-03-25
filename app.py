@@ -150,6 +150,17 @@ if start_btn:
                 
                 st.success("🎉 변환이 완료되었습니다! 아래 버튼을 눌러 다운로드하세요.")
                 
+                # [신규] 저작권/보안 차단된 페이지가 있다면 사용자에게 명시적으로 알림
+                if extractor.blocked_pages:
+                    blocked_msg = "**🚨 주의: 일부 페이지가 저작권 및 보안 정책에 의해 차단되었습니다!**\n\n"
+                    blocked_msg += "아래의 파일들은 내용이 추출되지 않았습니다:\n"
+                    for path, reason in extractor.blocked_pages:
+                        # 사용자 친화적인 파일명으로 다듬기 (예: file_page_1.jpg -> file_page_1)
+                        clean_name = os.path.basename(path).replace('_safe.jpg', '').replace('.jpg', '')
+                        blocked_msg += f"- 📄 **{clean_name}** ({reason})\n"
+                    blocked_msg += "\n*(차단된 페이지 외의 나머지 문서는 정상적으로 변환되어 워드 파일에 포함되었습니다.)*"
+                    st.error(blocked_msg, icon="🚨")
+                
                 # 확실하게 보이도록 미리보기 상자 밖으로 빼기 (expander 제거)
                 st.markdown("### 👀 추출된 내용 미리보기")
                 with st.container():
