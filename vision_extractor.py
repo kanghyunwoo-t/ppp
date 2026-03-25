@@ -129,12 +129,12 @@ class DocumentVisionExtractor:
                     return idx, chunk, None
                 except Exception as e:
                     err_msg = str(e)
-                    # 속도가 너무 빨라 429(Too Many Requests)가 뜨면 잠시 대기 후 재시도
-                    if "429" in err_msg or "Quota" in err_msg or "exhausted" in err_msg.lower():
+                    # 429(속도 제한) 또는 500/503(구글 서버 일시적 오류) 발생 시 잠시 대기 후 재시도
+                    if "429" in err_msg or "500" in err_msg or "503" in err_msg or "Quota" in err_msg or "exhausted" in err_msg.lower():
                         time.sleep(2 * (attempt + 1)) 
                         continue
                     return idx, None, err_msg
-            return idx, None, "API 호출 제한(429) 에러가 계속 발생했습니다."
+            return idx, None, "API 호출 제한 또는 서버 오류가 계속 발생했습니다."
                 
         # [핵심] 무료 API의 트래픽 과부하(429 에러)를 막기 위해 일꾼을 2명으로 축소 (안전 제일)
         with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
