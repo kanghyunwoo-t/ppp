@@ -1,6 +1,6 @@
 from bs4 import BeautifulSoup
 from docx import Document
-from docx.shared import Pt
+from docx.shared import Pt, Inches, RGBColor
 from docx.oxml.ns import qn
 
 class HtmlToDocxConverter:
@@ -12,7 +12,7 @@ class HtmlToDocxConverter:
         """한국어 폰트('맑은 고딕') 기본 설정"""
         style = self.doc.styles['Normal']
         style.font.name = '맑은 고딕'
-        style.font.size = Pt(11)
+        style.font.size = Pt(9) # 글자 크기를 11에서 9로 축소하여 세련된 느낌 적용
         style._element.rPr.rFonts.set(qn('w:eastAsia'), '맑은 고딕')
 
     def parse_and_convert(self, html_content: str, output_path: str):
@@ -45,15 +45,35 @@ class HtmlToDocxConverter:
         elif tag in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
             level = int(tag.replace('h', ''))
             level = min(level, 4)
-            self.doc.add_heading(element.get_text(strip=True), level=level)
+            # 제목은 워드 기본 파란색을 빼고 검은색 + 볼드(굵게) 처리 강제 적용
+            heading = self.doc.add_heading(level=level)
+            run = heading.add_run(element.get_text(strip=True))
+            run.bold = True
+            run.font.color.rgb = RGBColor(0, 0, 0)
             
-        # 4. 문단 태그
+        # 4. 문단 태그 (본문 내 강조 볼드 <b>, <strong> 태그 인식 추가)
         elif tag == 'p':
-            self.doc.add_paragraph(element.get_text(strip=True))
+            p = self.doc.add_paragraph()
+            for child in element.children:
+                if child.name is None:
+                    p.add_run(str(child))
+                elif child.name.lower() in ['b', 'strong']:
+                    run = p.add_run(child.get_text())
+                    run.bold = True # 중요 내용 볼드 처리
+                else:
+                    p.add_run(child.get_text())
             
         elif tag == 'ul' or tag == 'ol':
             for li in element.find_all('li', recursive=False):
-                self.doc.add_paragraph(li.get_text(strip=True), style='List Bullet')
+                p = self.doc.add_paragraph(style='List Bullet')
+                for child in li.children:
+                    if child.name is None:
+                        p.add_run(str(child))
+                    elif child.name.lower() in ['b', 'strong']:
+                        run = p.add_run(child.get_text())
+                        run.bold = True # 리스트 내 중요 내용 볼드 처리
+                    else:
+                        p.add_run(child.get_text())
                 
         # 6. 표 태그
         elif tag == 'table':
@@ -88,6 +108,7 @@ class HtmlToDocxConverter:
                 
                 colspan = int(cell.get('colspan', 1))
                 rowspan = int(cell.get('rowspan', 1))
+                is_header = (cell.name.lower() == 'th')
                 
                 # 병합된 영역만큼 그리드 좌표에 정보 기록
                 for r in range(rowspan):
@@ -96,7 +117,8 @@ class HtmlToDocxConverter:
                             'text': cell.get_text(strip=True) if r == 0 and c == 0 else '',
                             'is_primary': (r == 0 and c == 0),
                             'rowspan': rowspan,
-                            'colspan': colspan
+                            'colspan': colspan,
+                            'is_header': is_header
                         }
                 c_idx += colspan
             max_cols = max(max_cols, c_idx)
@@ -120,7 +142,11 @@ class HtmlToDocxConverter:
                     text = cell_info['text']
                     
                     docx_cell = docx_table.cell(r_idx, c_idx)
-                    docx_cell.text = text
+                    docx_cell.text = "" # 기본 텍스트 초기화 후 새로 주입
+                    if text:
+                        run = docx_cell.paragraphs[0].add_run(text)
+                        if cell_info.get('is_header'):
+                            run.bold = True # 표의 머리글(제목) 칸 볼드 처리
                     
                     # 세로(rowspan) 또는 가로(colspan) 병합이 필요한 경우
                     if rs > 1 or cs > 1:
@@ -131,3 +157,27 @@ class HtmlToDocxConverter:
                         if end_r > r_idx or end_c > c_idx:
                             target_cell = docx_table.cell(end_r, end_c)
                             docx_cell.merge(target_cell)
+
+        # 4. [신규] 텍스트 길이에 비례하여 표의 열 너비(Column Width) 자동 조절
+        col_max_lengths = {c: 1 for c in range(max_cols)} # 0으로 나누기 방지
+        for r_idx in range(num_rows):
+            for c_idx in range(max_cols):
+                cell_info = grid.get((r_idx, c_idx))
+                if cell_info and cell_info['is_primary']:
+                    # 병합된 셀은 너비 계산을 왜곡할 수 있으므로, 단일 칸의 텍스트만 계산에 반영
+                    if cell_info['colspan'] == 1:
+                        text_len = len(cell_info['text']) + 2 # 최소 여백 보장
+                        if text_len > col_max_lengths[c_idx]:
+                            col_max_lengths[c_idx] = text_len
+
+        total_length = sum(col_max_lengths.values())
+        if total_length > 0:
+            # 워드 문서의 기본 본문 너비인 약 6.5인치를 기준으로 비율 분배
+            table_width_inches = 6.5
+            for c_idx, col in enumerate(docx_table.columns):
+                ratio = col_max_lengths[c_idx] / total_length
+                col_width = Inches(table_width_inches * ratio)
+                col.width = col_width
+                # python-docx 버그 방지: 셀마다 명시적으로 너비를 한 번 더 설정해야 완벽히 적용됨
+                for cell in col.cells:
+                    cell.width = col_width
