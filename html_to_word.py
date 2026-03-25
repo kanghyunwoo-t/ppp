@@ -60,6 +60,12 @@ class HtmlToDocxConverter:
                 elif child.name.lower() in ['b', 'strong']:
                     run = p.add_run(child.get_text())
                     run.bold = True # 중요 내용 볼드 처리
+                elif child.name.lower() == 'br':
+                    p.add_run('\n')
+                elif child.name.lower() == 'a':
+                    run = p.add_run(child.get_text())
+                    run.underline = True
+                    run.font.color.rgb = RGBColor(0, 0, 255) # 파란색 링크 스타일
                 else:
                     p.add_run(child.get_text())
             
@@ -72,6 +78,12 @@ class HtmlToDocxConverter:
                     elif child.name.lower() in ['b', 'strong']:
                         run = p.add_run(child.get_text())
                         run.bold = True # 리스트 내 중요 내용 볼드 처리
+                    elif child.name.lower() == 'br':
+                        p.add_run('\n')
+                    elif child.name.lower() == 'a':
+                        run = p.add_run(child.get_text())
+                        run.underline = True
+                        run.font.color.rgb = RGBColor(0, 0, 255) # 파란색 링크 스타일
                     else:
                         p.add_run(child.get_text())
                 
