@@ -12,24 +12,6 @@ from html_to_word import HtmlToDocxConverter
 st.set_page_config(page_title="문서 변환기", layout="centered")
 
 st.title("📄 문서 구조 보존형 디지털 변환기 (✨업데이트됨)")
-
-# --- 사용자 가이드 (도움말) 추가 ---
-with st.expander("📖 처음 오셨나요? 사용자 가이드 보기 (클릭)", expanded=False):
-    st.markdown("""
-    **이 프로그램은 이미지나 PDF 속의 복잡한 표와 텍스트를 원본 구조 그대로 편집 가능한 워드(.docx) 파일로 변환해 주는 AI 도구입니다.**
-    
-    ### 💡 사용 방법
-    1. **파일 업로드:** 아래 거대한 점선 박스에 변환할 사진(jpg, png)이나 PDF 파일을 드래그해서 올려주세요.
-    2. **순서 정렬:** 여러 장을 올렸다면, 화면에 나타나는 목록을 마우스로 위아래로 끌어서(드래그) 원하는 순서대로 맞출 수 있습니다.
-    3. **비밀번호 입력:** 관리자에게 공유받은 **웹사이트 접속 비밀번호**를 입력창에 적어주세요.
-    4. **변환 시작:** `🚀 변환 시작하기` 버튼을 누르면 AI가 문서를 읽기 시작합니다. (페이지당 약 10~20초 소요)
-    5. **다운로드:** 변환이 끝나면 화면 하단의 미리보기로 결과를 확인하고 워드 파일을 다운로드하세요!
-
-    ### ⚠️ 주의사항 (필독)
-    * 쾌적하고 안정적인 서버 환경을 위해 **가급적 한 번에 1~2장씩 나누어서 작업**하시는 것을 권장합니다.
-    * 빛 반사가 없고 **글자와 표 테두리가 선명하게 찍힌 사진**일수록 변환 정확도가 100%에 가까워집니다.
-    """)
-
 st.write("이미지 및 **PDF 파일**을 아래에 **드래그 앤 드롭**하거나 클릭해서 업로드하세요.")
 
 # 넓고 큼직한 파일 업로드 칸을 만들기 위한 커스텀 CSS 적용
@@ -93,10 +75,10 @@ if uploaded_files:
                     st.info(f"📄 [{idx+1}번] PDF")
 
 # 업데이트 기능 안내 (사용자 혼란 방지용)
-st.info("💡 **안내:** 이미지를 올리고 **[🚀 변환 시작하기]**를 누르시면, 작업 완료 후 하단에 **'미리보기'**와 **'API 요금 계산기'**가 나타납니다!")
+st.info("💡 **안내:** 이미지를 올리고 **[🚀 변환 시작하기]**를 누르시면, 작업 완료 후 하단에 **'미리보기'**가 나타납니다!")
 
-# 사용자로부터 API 키 직접 입력받기 (보안 강화)
-user_api_key = st.text_input("🔑 본인의 Gemini API Key를 입력하세요", type="password", help="Google AI Studio에서 발급받은 API 키를 입력하세요. 입력하신 키는 서버에 저장되지 않고 변환 즉시 폐기됩니다.")
+# 지인 공유용 보안: API 키 대신 웹사이트 접속 비밀번호 입력받기
+app_password = st.text_input("🔒 웹사이트 접속 비밀번호", type="password", help="관리자에게 공유받은 비밀번호를 입력해야 사용할 수 있습니다.")
 
 col1, col2 = st.columns(2)
 with col1:
@@ -107,8 +89,9 @@ with col2:
         st.rerun()
 
 if start_btn:
-    if not user_api_key:
-        st.warning("API 키를 입력해 주세요!")
+    # Streamlit 서버 금고에 저장된 비밀번호와 일치하는지 확인
+    if app_password != st.secrets.get("APP_PASSWORD", "1234"):
+        st.warning("비밀번호가 틀렸습니다! 올바른 비밀번호를 입력해 주세요.")
     elif not ordered_files:
         st.warning("변환할 이미지나 PDF 파일을 업로드하고 순서를 지정해 주세요!")
     else:
@@ -150,8 +133,8 @@ if start_btn:
         
         try:
             with st.spinner("AI 분석을 시작합니다..."):
-                # 1단계: HTML 추출
-                extractor = DocumentVisionExtractor(api_key=user_api_key)
+                # 1단계: HTML 추출 (서버 금고에 숨겨둔 내 API 키를 안전하게 꺼내 쓰기)
+                extractor = DocumentVisionExtractor(api_key=st.secrets["GOOGLE_API_KEY"])
                 st.info(f"🤖 **자동 적용된 AI 모델:** `{extractor.model_name}`")
                 
                 progress_bar.progress(0) # AI 분석용으로 게이지 리셋
@@ -172,28 +155,6 @@ if start_btn:
                 converter.parse_and_convert(combined_html, output_path)
                 
                 st.success("🎉 변환이 완료되었습니다! 아래 버튼을 눌러 다운로드하세요.")
-                
-                # 비용 계산 로직 추가
-                in_tokens = extractor.total_input_tokens
-                out_tokens = extractor.total_output_tokens
-                is_pro = "pro" in extractor.model_name.lower()
-                in_price = 3.50 if is_pro else 0.35
-                out_price = 10.50 if is_pro else 1.05
-                # 최신 구글 API 유료 요금표 완벽 반영 (100만 토큰 당 달러 가격)
-                in_price = 3.50 if is_pro else 0.075
-                out_price = 10.50 if is_pro else 0.30
-                
-                est_cost_usd = (in_tokens / 1_000_000) * in_price + (out_tokens / 1_000_000) * out_price
-                est_cost_krw = est_cost_usd * 1350 # 환율 대략 1350원 기준
-                
-                st.info(f"💰 **이번 변환 예상 API 비용:** 약 ${est_cost_usd:.4f} (한화 약 {int(est_cost_krw)}원)\n\n"
-                        f"📊 **소모된 토큰:** 이미지 분석(입력) {in_tokens:,}개 / 결과 생성(출력) {out_tokens:,}개")
-                st.markdown("### 💰 실시간 요금 계산기")
-                c1, c2, c3 = st.columns(3)
-                c1.metric(label="총 소모 토큰", value=f"{in_tokens + out_tokens:,} 개")
-                c2.metric(label="예상 비용 (달러)", value=f"${est_cost_usd:.4f}")
-                c3.metric(label="예상 비용 (원화)", value=f"약 {int(est_cost_krw)} 원")
-                st.caption(f"적용 모델: `{extractor.model_name}` (입력: {in_tokens:,} / 출력: {out_tokens:,})")
                 
                 # 확실하게 보이도록 미리보기 상자 밖으로 빼기 (expander 제거)
                 st.markdown("### 👀 추출된 내용 미리보기")
