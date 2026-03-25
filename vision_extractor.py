@@ -74,7 +74,16 @@ class DocumentVisionExtractor:
                     self.total_output_tokens += response.usage_metadata.candidates_token_count
         except Exception:
             pass
-        text = response.text.strip()
+            
+        try:
+            text = response.text.strip()
+        except ValueError as e:
+            # 구글 AI의 저작권(Recitation) 또는 안전(Safety) 정책에 걸려 텍스트를 주지 않는 경우 예외 처리
+            error_msg = str(e)
+            if "finish_reason is 4" in error_msg or "copyrighted" in error_msg:
+                return "<p style='color:red;'><b>[주의: 이 페이지는 구글 AI의 저작권 보호 정책(Recitation)에 의해 내용 추출이 차단되었습니다. 원본 문서의 내용이 기존 저작물과 동일할 때 발생합니다.]</b></p>"
+            else:
+                return f"<p style='color:red;'><b>[주의: 이 페이지는 구글 AI 보안 정책 필터에 의해 차단되었습니다. 사유: {error_msg}]</b></p>"
         
         # AI가 마크다운(```html 등)으로 감싸서 출력한 경우 불필요한 텍스트 강제 제거
         if text.startswith("```html"):
