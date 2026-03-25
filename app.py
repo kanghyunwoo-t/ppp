@@ -4,6 +4,10 @@ import streamlit as st
 import streamlit.components.v1 as components
 import fitz  # PyMuPDF (PDF 처리용)
 from PIL import Image
+
+# 아주 거대한 고화질 스캔본이나 사진을 열 때 발생하는 '이미지 폭탄(DecompressionBomb)' 에러 방지
+Image.MAX_IMAGE_PIXELS = None
+
 from streamlit_sortables import sort_items
 from vision_extractor import DocumentVisionExtractor
 from html_to_word import HtmlToDocxConverter
